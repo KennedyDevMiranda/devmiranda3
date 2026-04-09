@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Administrativo</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .admin-layout { display: flex; min-height: 100vh; }
+        .sidebar {
+            width: 240px; background: var(--dark-surface);
+            border-right: 1px solid var(--border); padding: 20px 0;
+            flex-shrink: 0;
+        }
+        .sidebar h2 { padding: 0 20px; margin-bottom: 24px; font-size: 16px; }
+        .sidebar a {
+            display: block; padding: 10px 20px; color: var(--text-muted);
+            text-decoration: none; font-size: 14px; transition: all .2s;
+        }
+        .sidebar a:hover, .sidebar a.active { background: var(--dark-card); color: #fff; }
+        .main-content { flex: 1; padding: 24px; overflow-y: auto; }
+        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .page-header h1 { font-size: 1.5rem; }
+
+        .stats-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px; margin-bottom: 24px;
+        }
+        .stat-card {
+            background: var(--dark-card); border-radius: var(--radius);
+            padding: 20px; border: 1px solid var(--border);
+        }
+        .stat-card .value { font-size: 2rem; font-weight: 700; }
+        .stat-card .label { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+
+        .orders-list { display: flex; flex-direction: column; gap: 8px; }
+        .order-row {
+            display: flex; align-items: center; gap: 16px;
+            padding: 14px; background: var(--dark-card); border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+        .order-row .code { font-weight: 700; min-width: 60px; }
+        .order-row .info { flex: 1; }
+        .order-row .info .name { font-weight: 600; }
+        .order-row .info .details { font-size: 12px; color: var(--text-muted); }
+
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .admin-layout { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-layout">
+        <nav class="sidebar">
+            <h2>⚙️ Admin</h2>
+            <a href="#" class="active" onclick="showSection('dashboard')">📊 Dashboard</a>
+            <a href="#" onclick="showSection('estabelecimentos')">🏪 Estabelecimentos</a>
+            <a href="#" onclick="showSection('categorias')">📂 Categorias</a>
+            <a href="#" onclick="showSection('produtos')">📦 Produtos</a>
+            <a href="#" onclick="showSection('pedidos')">🧾 Pedidos</a>
+            <a href="#" onclick="showSection('clientes')">👥 Clientes</a>
+            <a href="/">🌐 Voltar ao Site</a>
+        </nav>
+        <main id="mainContent" class="main-content"></main>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script>
+        let currentSection = 'dashboard';
+
+        function showSection(section) {
+            currentSection = section;
+            document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
+            event?.target?.classList.add('active');
+            window['render_' + section]?.();
+        }
+
+        // DASHBOARD
+        async function render_dashboard() {
+            const id = getEstabelecimentoId();
+            const res = await apiGet(`/api/pedidos/estabelecimento/${id}/resumo`);
+            const d = res.dados || {};
+            document.getElementById('mainContent').innerHTML = `
+                <div class="page-header"><h1>📊 Dashboard</h1></div>
+                <div class="stats-grid">
+                    <div class="stat-card"><div class="value">${d.pedidosHoje || 0}</div><div class="label">Pedidos Hoje</div></div>
+                    <div class="stat-card"><div class="value" style="color:var(--success)">${formatCurrency(d.faturamentoHoje || 0)}</div><div class="label">Faturamento Hoje</div></div>
+                    <div class="stat-card"><div class="value" style="color:var(--primary)">${formatCurrency(d.faturamentoMes || 0)}</div><div class="label">Faturamento Mês</div></div>
+                    <div class="stat-card"><div class="value">${d.totalPedidos || 0}</div><div class="label">Total de Pedidos</div></div>
+                    <div class="stat-card"><div class="value">${d.produtosAtivos || 0}</div><div class="label">Produtos Ativos</div></div>
+                    <div class="stat-card"><div class="value" style="color:var(--danger)">${d.produtosSemEstoque || 0}</div><div class="label">Sem Estoque</div></div>
+                    <div class="stat-card"><div class="value">${d.clientesCadastrados || 0}</div><div class="label">Clientes</div></div>
+                </div>
+            `;
+        }
+
+        // ESTABELECIMENTOS
+        async function render_estabelecimentos() {
+            const res = await apiGet('/api/estabelecimentos');
+            const list = res.dados || [];
+            document.getElementById('mainContent').innerHTML = `
+                <div class="page-header">
+                    <h1>🏪 Estabelecimentos</h1>
+                    <button class="btn btn-primary" onclick="showEstabForm()">+ Novo</button>
+                </div>
+                <div class="table-responsive"><table>
+                    <thead><tr><th>Nome</th><th>CNPJ</th><th>Tipo</th><th>Cidade</th><th>Status</th><th>Ações</th></tr></thead>
+                    <tbody>${list.map(e => `<tr>
+                        <td><strong>${e.nome}</strong></td><td>${e.documento}</td><td>${e.tipoDescricao}</td>
+                        <td>${e.cidade}/${e.estado}</td>
+                        <td><span class="badge badge-${e.ativo ? 'success' : 'danger'}">${e.ativo ? 'Ativo' : 'Inativo'}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-outline" onclick="selectEstab(${e.id})">Selecionar</button>
+                        </td>
+                    </tr>`).join('')}</tbody>
+                </table></div>
+                <div id="estabFormArea"></div>
+            `;
+        }
+
+        function selectEstab(id) {
+            setEstabelecimentoId(id);
+            toast('Estabelecimento selecionado!');
+            render_dashboard();
+        }
+
+        function showEstabForm() {
+            document.getElementById('estabFormArea').innerHTML = `
+                <div class="card" style="margin-top:16px">
+                    <h3>Novo Estabelecimento</h3>
+                    <div class="flex gap-md" style="flex-wrap:wrap;margin-top:12px">
+                        <div class="form-group" style="flex:1;min-width:200px"><label>Nome *</label><input class="form-control" id="eNome"></div>
+                        <div class="form-group" style="flex:1;min-width:200px"><label>CNPJ *</label><input class="form-control" id="eDoc"></div>
+                        <div class="form-group" style="flex:1;min-width:150px"><label>Tipo</label>
+                            <select class="form-control" id="eTipo">
+                                <option value="1">Lanchonete</option><option value="2">Restaurante</option>
+                                <option value="3">Farmácia</option><option value="4">Conveniência</option>
+                                <option value="5">Padaria</option><option value="6">Pizzaria</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex:1;min-width:200px"><label>Telefone</label><input class="form-control" id="eTel"></div>
+                        <div class="form-group" style="flex:1;min-width:200px"><label>Email</label><input class="form-control" id="eEmail"></div>
+                        <div class="form-group" style="flex:2;min-width:300px"><label>Endereço</label><input class="form-control" id="eEnd"></div>
+                        <div class="form-group" style="flex:1;min-width:150px"><label>Cidade</label><input class="form-control" id="eCid"></div>
+                        <div class="form-group" style="flex:0 0 80px"><label>UF</label><input class="form-control" id="eUF" maxlength="2"></div>
+                        <div class="form-group" style="flex:1;min-width:120px"><label>CEP</label><input class="form-control" id="eCep"></div>
+                    </div>
+                    <button class="btn btn-success" onclick="saveEstab()">Salvar</button>
+                </div>
+            `;
+        }
+
+        async function saveEstab() {
+            const dto = {
+                nome: document.getElementById('eNome').value,
+                documento: document.getElementById('eDoc').value,
+                tipo: parseInt(document.getElementById('eTipo').value),
+                telefone: document.getElementById('eTel').value || '',
+                email: document.getElementById('eEmail').value || '',
+                endereco: document.getElementById('eEnd').value || '',
+                cidade: document.getElementById('eCid').value || '',
+                estado: document.getElementById('eUF').value || '',
+                cep: document.getElementById('eCep').value || ''
+            };
+            const res = await apiPost('/api/estabelecimentos', dto);
+            if (res.sucesso) { toast(res.mensagem); render_estabelecimentos(); }
+            else { toast(res.mensagem, 'error'); }
+        }
+
+        // CATEGORIAS
+        async function render_categorias() {
+            const id = getEstabelecimentoId();
+            const res = await apiGet(`/api/categorias/estabelecimento/${id}`);
+            const list = res.dados || [];
+            document.getElementById('mainContent').innerHTML = `
+                <div class="page-header">
+                    <h1>📂 Categorias</h1>
+                    <button class="btn btn-primary" onclick="showCatForm()">+ Nova</button>
+                </div>
+                <div class="table-responsive"><table>
+                    <thead><tr><th>Ícone</th><th>Nome</th><th>Ordem</th><th>Status</th></tr></thead>
+                    <tbody>${list.map(c => `<tr>
+                        <td>${c.icone || '📁'}</td><td>${c.nome}</td><td>${c.ordem}</td>
+                        <td><span class="badge badge-${c.ativo ? 'success' : 'danger'}">${c.ativo ? 'Ativo' : 'Inativo'}</span></td>
+                    </tr>`).join('')}</tbody>
+                </table></div>
+                <div id="catFormArea"></div>
+            `;
+        }
+
+        function showCatForm() {
+            document.getElementById('catFormArea').innerHTML = `
+                <div class="card" style="margin-top:16px">
+                    <h3>Nova Categoria</h3>
+                    <div class="flex gap-md" style="flex-wrap:wrap;margin-top:12px">
+                        <div class="form-group" style="flex:2"><label>Nome *</label><input class="form-control" id="cNome"></div>
+                        <div class="form-group" style="flex:1"><label>Ícone (emoji)</label><input class="form-control" id="cIcone" placeholder="📚"></div>
+                        <div class="form-group" style="flex:0 0 80px"><label>Ordem</label><input type="number" class="form-control" id="cOrdem" value="0"></div>
+                    </div>
+                    <button class="btn btn-success" onclick="saveCat()">Salvar</button>
+                </div>
+            `;
+        }
+
+        async function saveCat() {
+            const dto = {
+                estabelecimentoId: parseInt(getEstabelecimentoId()),
+                nome: document.getElementById('cNome').value,
+                icone: document.getElementById('cIcone').value,
+                ordem: parseInt(document.getElementById('cOrdem').value) || 0
+            };
+            const res = await apiPost('/api/categorias', dto);
+            if (res.sucesso) { toast(res.mensagem); render_categorias(); }
+            else { toast(res.mensagem, 'error'); }
+        }
+
+        // PRODUTOS
+        async function render_produtos() {
+            const id = getEstabelecimentoId();
+            const res = await apiGet(`/api/produtos/estabelecimento/${id}`);
+            const list = res.dados || [];
+            document.getElementById('mainContent').innerHTML = `
+                <div class="page-header">
+                    <h1>📦 Produtos</h1>
+                    <button class="btn btn-primary" onclick="showProdForm()">+ Novo</button>
+                </div>
+                <div class="table-responsive"><table>
+                    <thead><tr><th>Nome</th><th>Categoria</th><th>Preço</th><th>Estoque</th><th>Status</th></tr></thead>
+                    <tbody>${list.map(p => `<tr>
+                        <td><strong>${p.nome}</strong><br><small style="color:var(--text-muted)">${p.descricao.substring(0, 60)}</small></td>
+                        <td>${p.categoriaNome}</td>
+                        <td>${formatCurrency(p.preco)}</td>
+                        <td>
+                            <span class="${p.estoqueAtual <= p.estoqueMinimo ? 'badge badge-danger' : ''}">${p.estoqueAtual}</span>
+                            ${p.controlaEstoque ? `<small style="color:var(--text-muted)"> (mín: ${p.estoqueMinimo})</small>` : ''}
+                        </td>
+                        <td><span class="badge badge-${p.ativo ? 'success' : 'danger'}">${p.ativo ? 'Ativo' : 'Inativo'}</span></td>
+                    </tr>`).join('')}</tbody>
+                </table></div>
+                <div id="prodFormArea"></div>
+            `;
+        }
+
+        async function showProdForm() {
+            const catRes = await apiGet(`/api/categorias/estabelecimento/${getEstabelecimentoId()}`);
+            const cats = catRes.dados || [];
+            document.getElementById('prodFormArea').innerHTML = `
+                <div class="card" style="margin-top:16px">
+                    <h3>Novo Produto</h3>
+                    <div class="flex gap-md" style="flex-wrap:wrap;margin-top:12px">
+                        <div class="form-group" style="flex:2;min-width:200px"><label>Nome *</label><input class="form-control" id="pNome"></div>
+                        <div class="form-group" style="flex:1;min-width:150px"><label>Categoria *</label>
+                            <select class="form-control" id="pCat">${cats.map(c => `<option value="${c.id}">${c.nome}</option>`).join('')}</select>
+                        </div>
+                        <div class="form-group" style="flex:1;min-width:120px"><label>Preço *</label><input type="number" step="0.01" class="form-control" id="pPreco"></div>
+                        <div class="form-group" style="flex:3;min-width:300px"><label>Descrição</label><input class="form-control" id="pDesc"></div>
+                        <div class="form-group" style="flex:1;min-width:100px"><label>Estoque</label><input type="number" class="form-control" id="pEstoque" value="0"></div>
+                        <div class="form-group" style="flex:1;min-width:100px"><label>Estoque Mín.</label><input type="number" class="form-control" id="pEstMin" value="5"></div>
+                    </div>
+                    <button class="btn btn-success" onclick="saveProd()">Salvar</button>
+                </div>
+            `;
+        }
+
+        async function saveProd() {
+            const dto = {
+                estabelecimentoId: parseInt(getEstabelecimentoId()),
+                categoriaId: parseInt(document.getElementById('pCat').value),
+                nome: document.getElementById('pNome').value,
+                descricao: document.getElementById('pDesc').value || '',
+                preco: parseFloat(document.getElementById('pPreco').value),
+                imagemUrl: null,
+                estoqueAtual: parseInt(document.getElementById('pEstoque').value) || 0,
+                estoqueMinimo: parseInt(document.getElementById('pEstMin').value) || 0,
+                controlaEstoque: true
+            };
+            const res = await apiPost('/api/produtos', dto);
+            if (res.sucesso) { toast(res.mensagem); render_produtos(); }
+            else { toast(res.mensagem, 'error'); }
+        }
+
+        // PEDIDOS
+        async function render_pedidos() {
+            const id = getEstabelecimentoId();
+            const res = await apiGet(`/api/pedidos/estabelecimento/${id}`);
+            const list = res.dados || [];
+            const statusColors = { Pendente:'warning', Confirmado:'primary', EmPreparo:'warning', Pronto:'success', SaiuEntrega:'primary', Entregue:'success', Finalizado:'success', Cancelado:'danger' };
+            document.getElementById('mainContent').innerHTML = `
+                <div class="page-header"><h1>🧾 Pedidos</h1></div>
+                <div class="orders-list">
+                    ${list.length === 0 ? '<div class="empty-state">Nenhum pedido ainda</div>' : ''}
+                    ${list.map(p => `
+                        <div class="order-row">
+                            <span class="code">${p.codigo}</span>
+                            <div class="info">
+                                <div class="name">${p.nomeCliente} — ${p.tipo}</div>
+                                <div class="details">${p.itens.map(i => `${i.quantidade}x ${i.nomeProduto}`).join(', ')}</div>
+                            </div>
+                            <strong style="color:var(--success)">${formatCurrency(p.total)}</strong>
+                            <span class="badge badge-${statusColors[p.status] || 'warning'}">${p.status}</span>
+                            <select class="form-control" style="width:auto" onchange="updateStatus(${p.id}, this.value)">
+                                <option value="">Alterar...</option>
+                                <option value="2">Confirmado</option><option value="3">Em Preparo</option>
+                                <option value="4">Pronto</option><option value="5">Saiu p/ Entrega</option>
+                                <option value="6">Entregue</option><option value="7">Finalizado</option>
+                                <option value="8">Cancelado</option>
+                            </select>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        async function updateStatus(pedidoId, status) {
+            if (!status) return;
+            const res = await apiPatch(`/api/pedidos/${pedidoId}/status`, { novoStatus: parseInt(status) });
+            if (res.sucesso) { toast(res.mensagem); render_pedidos(); }
+            else { toast(res.mensagem, 'error'); }
+        }
+
+        // CLIENTES
+        async function render_clientes() {
+            const id = getEstabelecimentoId();
+            const res = await apiGet(`/api/clientes/estabelecimento/${id}`);
+            const list = res.dados || [];
+            document.getElementById('mainContent').innerHTML = `
+                <div class="page-header"><h1>👥 Clientes</h1></div>
+                <div class="table-responsive"><table>
+                    <thead><tr><th>Nome</th><th>Telefone</th><th>Email</th><th>Documento</th><th>Cidade</th></tr></thead>
+                    <tbody>${list.map(c => `<tr>
+                        <td>${c.nome}</td><td>${c.telefone}</td><td>${c.email || '-'}</td>
+                        <td>${c.documento || '-'}</td><td>${c.cidade || '-'}</td>
+                    </tr>`).join('')}</tbody>
+                </table></div>
+            `;
+        }
+
+        // Init
+        render_dashboard();
+    </script>
+</body>
+</html>
